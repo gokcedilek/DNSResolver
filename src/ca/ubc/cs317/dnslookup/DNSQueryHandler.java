@@ -120,11 +120,13 @@ public class DNSQueryHandler {
 
         /* qclass */
         index = encodeIntToBytes(1, message, index);
+        System.out.println("last index: " + index);
 
-        printByteArray(message);
-
-        /* send query (TODO: send exact number of bytes) */
-        DatagramPacket packet = new DatagramPacket(message, message.length, server, 53);
+        /* send query */
+        System.out.println("query!");
+        byte[] query = Arrays.copyOfRange(message, 0, index);
+        printByteArray(query);
+        DatagramPacket packet = new DatagramPacket(query, query.length, server, 53);
         socket.send(packet);
 
         /* receive response */
@@ -132,16 +134,9 @@ public class DNSQueryHandler {
         packet = new DatagramPacket(response, response.length);
         socket.receive(packet);
 
-        System.out.println("response!");
-        printByteArray(packet.getData());
-
-        return null;
-        /*
-         * int transactionID = random.nextInt(); ByteBuffer buf =
-         * ByteBuffer.wrap(packet.getData());
-         * System.out.println(Arrays.toString(packet.getData())); DNSServerResponse res
-         * = new DNSServerResponse(buf, transactionID); return res;
-         */
+        int transactionId = queryId;
+        ByteBuffer buf = ByteBuffer.wrap(packet.getData());
+        return new DNSServerResponse(buf, transactionId);
     }
 
     /**
@@ -157,6 +152,8 @@ public class DNSQueryHandler {
     public static Set<ResourceRecord> decodeAndCacheResponse(int transactionID, ByteBuffer responseBuffer,
             DNSCache cache) {
         // TODO (PART 1): Implement this
+        System.out.println("response!!!");
+        printByteArray(responseBuffer.array());
         return null;
     }
 
@@ -166,6 +163,7 @@ public class DNSQueryHandler {
      * @param record The record to be printed
      * @param rtype  The type of the record to be printed
      */
+
     private static void verbosePrintResourceRecord(ResourceRecord record, int rtype) {
         if (verboseTracing)
             System.out.format("       %-30s %-10d %-4s %s\n", record.getHostName(), record.getTTL(),
