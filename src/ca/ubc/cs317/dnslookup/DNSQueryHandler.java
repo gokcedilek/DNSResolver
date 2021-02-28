@@ -7,6 +7,9 @@ import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.Random;
 import java.util.Set;
+
+import ca.ubc.cs317.dnslookup.processing.DNSByteResults;
+
 import java.util.Arrays;
 import java.lang.Integer;
 import java.lang.Character;
@@ -100,17 +103,18 @@ public class DNSQueryHandler {
 
         /* query id (0, 1) */
         int queryId = random.nextInt(65535);
-        // System.out.println(queryId);
         encodeIntToBytes(queryId, message, 0);
 
         /* qr, opcode, aa, tc, rd (2) */
 
         /* ra, z, rcode (3) */
 
-        /* qcount */
+        /* qcount (4, 5) */
         encodeIntToBytes(1, message, 4);
 
-        /* qname */
+        /* ancount (6, 7), nscount (8, 9), arcount (10, 11) */
+
+        /* qname (12, _) */
         String hostname = node.getHostName();
         int index = encodeDomainName(hostname, message, 12);
 
@@ -154,6 +158,11 @@ public class DNSQueryHandler {
         // TODO (PART 1): Implement this
         System.out.println("response!!!");
         printByteArray(responseBuffer.array());
+
+        // record: node, ttl, result
+        // cache.addResult(record)
+         DNSByteResults byteResults = new DNSByteResults(responseBuffer);
+         byteResults.decodeByteResult();
         return null;
     }
 
