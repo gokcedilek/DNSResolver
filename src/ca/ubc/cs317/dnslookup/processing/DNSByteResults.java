@@ -6,10 +6,17 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import ca.ubc.cs317.dnslookup.DNSNode;
 import ca.ubc.cs317.dnslookup.RecordType;
+import ca.ubc.cs317.dnslookup.DNSCache;
+import ca.ubc.cs317.dnslookup.ResourceRecord;
+import java.util.*;
+
+
 
 public class DNSByteResults {
   private ByteBuffer resultBuffer;
   private byte[] resultArray;
+  private static DNSCache cache = DNSCache.getInstance();
+
 
   /* response fields */
   int qdcount;
@@ -40,7 +47,6 @@ public class DNSByteResults {
     //   decodeRecord(ind);
     //   totals--;
     // }
-
     decodeRecord(ind);
   }
 
@@ -103,7 +109,6 @@ public class DNSByteResults {
     System.out.println(startIndex);
     int qclass = decodeBytesToInt(startIndex, ++startIndex);
     System.out.println("q class: " + qclass);
-
     // check pointer next or 
     return ++startIndex;
   }
@@ -138,14 +143,15 @@ public class DNSByteResults {
     int shifted = resultArray[startIndex] >> 6;
     System.out.println(shifted);
     // 11 in binary is equivalent to -1 because int datatype is signed by default
+    String hostname = "";
     if (shifted == -1) {
       System.out.print(decodeBytesToInt(startIndex, startIndex+1));
       int offset = decodeBytesToInt(startIndex, startIndex+1) & 0x3fff;
       System.out.println(offset);
-      String name = getNameAtOffset(offset);
+      hostname = getNameAtOffset(offset);
       startIndex = startIndex + 2;
     } else {
-      String name = getNameAtOffset(startIndex);
+      hostname = getNameAtOffset(startIndex);
       // TODO how to increment startIndex in this case, maybe startIndex should be global
     }
     RecordType type = RecordType.getByCode(decodeBytesToInt(startIndex, ++startIndex));
@@ -162,15 +168,31 @@ public class DNSByteResults {
     startIndex++;
 
     String result = getRecordResultBasedOnRecordType(startIndex, rlength, type, rclass);
-    // byte shifted = (byte)((int) resultArray[startIndex]) >> 6);
-    // System.out.print(String.format("0x%02X", shifted) + ", ");
-
-    // if (firstByteAsInt == 17) {
-    //   System.out.println("message compression");
-    //   // c0 00 
-    //   int offset = resultArray[startIndex++];
-    // }
+    startIndex = startIndex + rlength;
+    System.out.println(startIndex);
+    ResourceRecord record = new ResourceRecord(hostname, type, ttl, result);
+    /* add record to cache */
+    cache.addResult(record);
+    // TODO how to test record added to the cache
+    System.out.println(cache.getCachedResults(record.getNode()));
     return startIndex;
+  }
+
+  private String readHostAddress(int startIndex, int addressLength) {
+    StringBuilder sb = new StringBuilder();
+    while (addressLength > 0){
+      // in two byte chunks convert to decimal and append .
+      int section = resultArray[startIndex] & 0xff;
+      startIndex++;
+      sb.append(section);
+      sb.append(".");
+      addressLength--;;
+    }
+    sb = sb.deleteCharAt(sb.length()-1);
+    System.out.println("host address: " + sb.toString());
+
+    System.out.println("startIndex after host address  " +startIndex);
+    return sb.toString();
   }
 
 //TODO
@@ -178,7 +200,12 @@ public class DNSByteResults {
     int typeCode = type.getCode();
     switch(typeCode) {
       case 1:
-        System.out.println("Type A record");
+        System.out.println("Type A record to be decoded");
+        /* class IN */
+        if (rclass == 1) {
+          return readHostAddress(startIndex, rlength);
+        }
+        // TODO For the CH class, a domain name followed by a 16 bit octal Chaos address. 
         break;
       case 2:
         System.out.println("Type NS record");
