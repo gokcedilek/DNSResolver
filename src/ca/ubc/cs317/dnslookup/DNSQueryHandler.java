@@ -159,11 +159,11 @@ public class DNSQueryHandler {
         System.out.println("response!!!");
         printByteArray(responseBuffer.array());
 
-        // record: node, ttl, result
-        // cache.addResult(record)
-         DNSByteResults byteResults = new DNSByteResults(responseBuffer);
-         byteResults.decodeByteResult();
-        return null;
+        DNSByteResults byteResults = new DNSByteResults(responseBuffer);
+//        Set<ResourceRecord> records = byteResults.decodeByteResult(cache);
+        Set<ResourceRecord> records = byteResults.decodeByteResult();
+        // cache.forEachNode(DNSLookupService::printResults);
+        return records;
     }
 
     /**
