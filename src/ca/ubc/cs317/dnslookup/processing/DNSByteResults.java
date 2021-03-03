@@ -268,8 +268,7 @@ public class DNSByteResults {
         StringBuilder sb = new StringBuilder();
         while (addressLength > 0) {
             String section = getHexString(resultArray[startIndex], resultArray[startIndex + 1]);
-            startIndex += 2;
-            sb.append(section);
+            startIndex += 2;    sb.append(section);
             sb.append(":");
             addressLength = addressLength-2;
         }
@@ -329,9 +328,22 @@ public class DNSByteResults {
 //        }
 //        System.out.println("final index when leaving cname stuff: " + startIndex);
 //        return sb.toString();
+//    java -jar $(JARFILE) 199.7.83.42 -p1
+
+//    private String trimStart(String value) {
+//
 //    }
+
     private String getHexString(byte firstB, byte secondB) {
-        return String.format("%02X:%02X ", firstB, secondB);
+        String input = String.format("%02x%02x", firstB, secondB);
+        input =input.replaceFirst("^0+", "");
+        // input = inp ut.stripLeading("0");
+        System.out.println(input);
+        if (input.equals("")) {
+            return "0";
+        } else {
+            return input;
+        }
     }
 
     // TODO
