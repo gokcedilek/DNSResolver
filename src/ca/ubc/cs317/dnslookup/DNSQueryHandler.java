@@ -124,12 +124,10 @@ public class DNSQueryHandler {
 
         /* qclass */
         index = encodeIntToBytes(1, message, index);
-        System.out.println("last index: " + index);
 
         /* send query */
-        System.out.println("query!");
         byte[] query = Arrays.copyOfRange(message, 0, index);
-        printByteArray(query);
+//        printByteArray(query);
         DatagramPacket packet = new DatagramPacket(query, query.length, server, 53);
         socket.send(packet);
 
@@ -156,12 +154,22 @@ public class DNSQueryHandler {
     public static Set<ResourceRecord> decodeAndCacheResponse(int transactionID, ByteBuffer responseBuffer,
             DNSCache cache) {
         // TODO (PART 1): Implement this
-        System.out.println("response!!!");
-        printByteArray(responseBuffer.array());
+//        printByteArray(responseBuffer.array());
 
         DNSByteResults byteResults = new DNSByteResults(responseBuffer);
-//        Set<ResourceRecord> records = byteResults.decodeByteResult(cache);
+        // Set<ResourceRecord> records = byteResults.decodeByteResult(cache);
         Set<ResourceRecord> records = byteResults.decodeByteResult();
+        System.out.println("records: " + records.size());
+//        System.out.println("size of cache before loop: " + cache.getResults().size());
+        for (ResourceRecord r : records) {
+            cache.addResult(r); // node --> set of records
+//            verbosePrintResourceRecord(r, r.getType().getCode());
+            System.out.println("record during loop:");
+            verbosePrintResourceRecord(r, r.getType().getCode());
+            System.out.println("size of cache during loop: " + cache.getCachedResults(r.getNode()).size());
+        }
+
+//        System.out.println("size of cache after loop: " + cache.getResults().size());
         // cache.forEachNode(DNSLookupService::printResults);
         return records;
     }

@@ -174,6 +174,10 @@ public class DNSLookupService {
 
         // TODO (PART 1/2): Implement this
 
+        // edit
+        System.out.println("getResults cache size: " + cache.getCachedResults(node).size());
+        // end of edit
+
         return cache.getCachedResults(node);
     }
 
@@ -194,6 +198,11 @@ public class DNSLookupService {
             Set<ResourceRecord> nameservers = DNSQueryHandler.decodeAndCacheResponse(serverResponse.getTransactionID(),
                     serverResponse.getResponse(),
                     cache);
+            // edit
+            System.out.println("retrieveResultsfromserver cache size: " + cache.getCachedResults(node).size());
+            System.out.println("nameservers size: " + nameservers.size());
+            // end of edit
+
             if (nameservers == null) nameservers = Collections.emptySet();
 
             if (p1Flag) return; // For testing part 1 only
@@ -211,6 +220,9 @@ public class DNSLookupService {
      */
     private static void queryNextLevel(DNSNode node, Set<ResourceRecord> nameservers) {
         // TODO (PART 2): Implement this
+
+        // 1st node --> if its cached, the name lookup we know it
+        // 2nd
 
     }
 
