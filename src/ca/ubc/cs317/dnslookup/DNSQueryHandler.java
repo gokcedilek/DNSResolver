@@ -65,7 +65,6 @@ public class DNSQueryHandler {
     private static int encodeDomainName(String hostname, byte[] message, int startIndex) {
         for (String label : hostname.split("\\.")) {
             byte b = (byte) label.length();
-            // System.out.println("length: " + String.format("0x%02X", b));
             message[startIndex++] = b;
             byte[] hostBytes = label.getBytes();
             for (int i = 0; i < hostBytes.length; i++) {
@@ -78,8 +77,6 @@ public class DNSQueryHandler {
     /* write an int as 16 bits */
     private static int encodeIntToBytes(int val, byte[] message, int startIndex) {
         String hex = Integer.toHexString(0x10000 | val).substring(1);
-        // System.out.println("hex value: " + hex);
-
         byte byte1 = hexToByte(hex.substring(0, 2));
         byte byte2 = hexToByte(hex.substring(2, hex.length()));
         message[startIndex++] = byte1;
@@ -99,8 +96,6 @@ public class DNSQueryHandler {
      */
     public static DNSServerResponse buildAndSendQuery(byte[] message, InetAddress server, DNSNode node)
             throws IOException {
-        // TODO (PART 1): Implement this
-
         /* query id (0, 1) */
         int queryId = random.nextInt(65535);
         encodeIntToBytes(queryId, message, 0);
@@ -130,6 +125,10 @@ public class DNSQueryHandler {
 //        printByteArray(query);
         DatagramPacket packet = new DatagramPacket(query, query.length, server, 53);
         socket.send(packet);
+        if (verboseTracing) {
+            System.out.println("\n\n");
+            System.out.printf("Query ID     %d %s  %s --> %s\n", queryId, hostname, node.getType(), server.toString().substring(1));
+        }
 
         /* receive response */
         byte[] response = new byte[1024];
@@ -154,23 +153,14 @@ public class DNSQueryHandler {
     public static Set<ResourceRecord> decodeAndCacheResponse(int transactionID, ByteBuffer responseBuffer,
             DNSCache cache) {
         // TODO (PART 1): Implement this
-//        printByteArray(responseBuffer.array());
-
         DNSByteResults byteResults = new DNSByteResults(responseBuffer);
-        // Set<ResourceRecord> records = byteResults.decodeByteResult(cache);
-        Set<ResourceRecord> records = byteResults.decodeByteResult();
-        System.out.println("records: " + records.size());
-//        System.out.println("size of cache before loop: " + cache.getResults().size());
-        for (ResourceRecord r : records) {
-            cache.addResult(r); // node --> set of records
-//            verbosePrintResourceRecord(r, r.getType().getCode());
-            System.out.println("record during loop:");
-            verbosePrintResourceRecord(r, r.getType().getCode());
-            System.out.println("size of cache during loop: " + cache.getCachedResults(r.getNode()).size());
+        Set<ResourceRecord> records = byteResults.decodeByteResult(verboseTracing);
+        if (records.isEmpty()) {
+            return records;
         }
-
-//        System.out.println("size of cache after loop: " + cache.getResults().size());
-        // cache.forEachNode(DNSLookupService::printResults);
+        for (ResourceRecord r : records) {
+            cache.addResult(r);
+        }
         return records;
     }
 

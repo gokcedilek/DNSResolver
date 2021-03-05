@@ -173,10 +173,35 @@ public class DNSLookupService {
         }
 
         // TODO (PART 1/2): Implement this
+        // ANS is cname query --> increment by 1, call getResults again
+        // only call this one again if ans is cname
+        retrieveResultsFromServer(node, rootServer);
+        // cache? check for CNAME
+        // loop through cache
 
-        // edit
-        System.out.println("getResults cache size: " + cache.getCachedResults(node).size());
-        // end of edit
+        for (ResourceRecord record : cache.getCachedResults(node)) {
+            // check if answer and not CNAME
+            System.out.printf("Record!: %-30s %-5s %-8d %s\n", node.getHostName(),
+                    record.getNode().getType(), record.getTTL(), record.getTextResult());
+            // if we found the answer
+            if ((node.getHostName().equals(record.getNode().getHostName()))) {
+                // if we dont have cname
+                if (record.getNode().getType() != RecordType.CNAME) {
+                    System.out.printf("ANSWER found: %-30s %-5s %-8d %s\n", node.getHostName(),
+                            record.getNode().getType(), record.getTTL(), record.getTextResult());
+//                    return cache.getCachedResults(node);
+                } else {
+                    DNSNode newNodeCNAME = new DNSNode(record.getTextResult(), RecordType.CNAME);
+                    return getResults(newNodeCNAME, indirectionLevel + 1);
+                    // how to get auth servers? and call retrieveResultsFromServer(newNodeCNAME, indirectionLevel +1);
+                }
+            } else {
+                // no answer yet
+                System.out.println("No answer yet");
+            }
+
+        }
+
 
         return cache.getCachedResults(node);
     }
@@ -220,10 +245,36 @@ public class DNSLookupService {
      */
     private static void queryNextLevel(DNSNode node, Set<ResourceRecord> nameservers) {
         // TODO (PART 2): Implement this
+        System.out.println("in queryNextLevel");
+//        printResults(node, nameservers)
+        for (ResourceRecord record : nameservers) {
+            System.out.printf("question: %s, answer: %s, type: %s, text result: %s, inet result: %s \n", node.getHostName(),
+                    record.getNode().getHostName(), record.getNode().getType(), record.getTextResult(), record.getInetResult());
+            // check if answer and not CNAME
+            if ((node.getHostName().equals(record.getNode().getHostName()))) {
+                if(record.getNode().getType() != RecordType.CNAME) {
+                    System.out.printf("QUERY NEXT LEVEL ANSWER: %-30s %-5s %-8d %s\n", node.getHostName(),
+                            record.getNode().getType(), record.getTTL(), record.getTextResult());
+                    return;
+                } else {
+
+
+                }
+            }
+
+        }
 
         // 1st node --> if its cached, the name lookup we know it
         // 2nd
-
+        // either --> return; or --> retrieveFromServer(node, new nameserver)
+        // done --> AA is
+//        InetAddress nextServer;
+//        if (nameservers[0].getInetResult() == null) {
+//            nextServer = InetAddress.getByName(nameservers[0];
+//        } else {
+//            nextServer = nameservers[0].getInetResult();
+//        }
+//        retrieveResultsFromServer(node, nextServer);
     }
 
     /**

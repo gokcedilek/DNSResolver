@@ -17,8 +17,6 @@ import java.util.*;
 public class DNSByteResults {
     private ByteBuffer resultBuffer;
     private byte[] resultArray;
-//    private static DNSCache cache = DNSCache.getInstance(); //note: return a list
-    // of records from here, store to cache in queryHandler
 
     /* response fields */
     int qdcount;
@@ -36,40 +34,53 @@ public class DNSByteResults {
     }
 
     // return something?
-    public Set<ResourceRecord> decodeByteResult() {
-        decodeRCode();
+    public Set<ResourceRecord> decodeByteResult(boolean verboseTracing) {
+        int rcode = decodeRCode();
+        if (rcode != 0) {
+            return Collections.emptySet();
+        }
+        int rid = decodeBytesToInt(0, 1);
         qdcount = decodeBytesToInt(4, 5);
         ancount = decodeBytesToInt(6, 7);
         nscount = decodeBytesToInt(8, 9);
         arcount = decodeBytesToInt(10, 11);
         int ind = decodeQuestion(12);
-        System.out.println("last index is: " + ind);
-        // TODO: if ans available return ans, else can return 0.0.0.0 as the IP
-
-        // decode each record
-         int totals = ancount + nscount + arcount;
-         while (totals > 0) {
-             ind = decodeRecord(ind);
-             totals--;
-         }
+        if (verboseTracing) {
+            System.out.printf("Response ID: %d Authoritative = %s\n", rid, decodeAA());
+        }
+        if (verboseTracing) {
+            System.out.printf("Answers (%d)\n", ancount);
+        }
+        for(int i = 0; i < ancount; i++) {
+            ind = decodeRecord(ind, verboseTracing);
+        }
+        if (verboseTracing) {
+            System.out.printf("Nameservers (%d)\n", nscount);
+        }
+        for(int i = 0; i < nscount; i++) {
+            ind = decodeRecord(ind, verboseTracing);
+        }
+        if (verboseTracing) {
+            System.out.printf("Additional Information (%d)\n", arcount);
+        }
+        for(int i = 0; i < arcount; i++) {
+            ind = decodeRecord(ind, verboseTracing);
+        }
         return setOfRecords;
     }
+    private boolean decodeAA() {
+        int AA = resultArray[2];
+        AA = AA >> 2;
+        AA = AA & 0xfff1;
+        return AA == 1;
+    }
 
-    // dig +norecurse @199.7.83.42 finance.google.ca --> part1
-    // part1: finance.google.ca no answer --> 0.0.0.0 + save decoded
-    // part2: iterative lookup --> just answer!
 
-    // /* i think we dont need this? */
-    // private static void decodeTransactionId() {
 
-    // }
-
-    private void decodeRCode() {
+    private int decodeRCode() {
         byte b = resultArray[3];
         int rcode = (0b1111) & b; // 00001111 & 00000101 == 00000101
-        if (rcode != 0) {
-            throw new Error(); // TODO: change
-        }
+        return rcode;
     }
 
     /* decode 2 bytes to an int */
@@ -83,7 +94,7 @@ public class DNSByteResults {
         byte length = 0;
         StringBuilder sb = new StringBuilder();
         do {
-            length = resultArray[startIndex++]; // 12
+            length = resultArray[startIndex++];
             if (length == 0)
                 break;
             byte[] domain = new byte[length];
@@ -101,42 +112,15 @@ public class DNSByteResults {
             }
         } while (length != 0);
         sb = sb.deleteCharAt(sb.length() - 1);
-        System.out.println("domain name: " + sb.toString());
+//        System.out.println("domain name: " + sb.toString());
         int qtype = decodeBytesToInt(startIndex, ++startIndex);
-        System.out.println("q type: " + qtype);
+//        System.out.println("q type: " + qtype);
         node = new DNSNode(sb.toString(), RecordType.getByCode(qtype));
         startIndex++;
 
-        // TODO store qclass?
         int qclass = decodeBytesToInt(startIndex, ++startIndex);
         return ++startIndex;
     }
-
-//    private String getNameAtOffset(int startIndex) {
-//        byte length = 0;
-//        StringBuilder sb = new StringBuilder();
-//        do {
-//            length = resultArray[startIndex++]; // 12
-//            if (length == 0)
-//                break;
-//            byte[] domain = new byte[length];
-//            for (int i = 0; i < (int) length; i++) {
-//                domain[i] = resultArray[startIndex++];
-//            }
-//            String domainName;
-//            try {
-//                domainName = new String(domain, "US-ASCII");
-//                sb.append(domainName);
-//                sb.append(".");
-//            } catch (UnsupportedEncodingException e) {
-//                // TODO Auto-generated catch block
-//                e.printStackTrace();
-//            }
-//        } while (length != 0);
-//        sb = sb.deleteCharAt(sb.length() - 1);
-//        System.out.println("domain name: " + sb.toString());
-//        return sb.toString();
-//    }
 
     private String readNameAtOffsetExperiment(int startIndex) {
         StringBuilder sb = new StringBuilder();
@@ -167,7 +151,6 @@ public class DNSByteResults {
                 e.printStackTrace();
             }
         }
-        System.out.println("query result: " + sb.toString());
         return sb.toString();
     }
 
@@ -185,7 +168,7 @@ public class DNSByteResults {
         }
     }
 
-    private int decodeRecord(int startIndex) {
+    private int decodeRecord(int startIndex, boolean verboseTracing) {
         int pointer = isPointer(startIndex);
         String hostname = "";
         if (pointer != -1) {
@@ -214,7 +197,6 @@ public class DNSByteResults {
         if (type == RecordType.A) {
             try {
                 InetAddress addressInet = InetAddress.getByName(result);
-                System.out.println("inet to string: " + addressInet.toString());
                 ResourceRecord record = new ResourceRecord(hostname, type, ttl,
                         addressInet);
                 setOfRecords.add(record);
@@ -227,7 +209,9 @@ public class DNSByteResults {
                     result);
             setOfRecords.add(record);
         }
-//        cache.addResult(record);
+        if (verboseTracing) {
+            System.out.printf("       %-30s %-10d %-4s %s\n", hostname, ttl, type, result);
+        }
         return startIndex;
     }
 
@@ -243,7 +227,6 @@ public class DNSByteResults {
         }
 
         sb = sb.deleteCharAt(sb.length() - 1);
-        System.out.println("type A host address: " + sb.toString());
         return sb.toString();
     }
     private String readTypeAAResult(int startIndex, int addressLength) {
@@ -255,7 +238,6 @@ public class DNSByteResults {
             addressLength = addressLength-2;
         }
         sb = sb.deleteCharAt(sb.length() - 1);
-        System.out.println("AAAA address: " + sb.toString());
         return sb.toString();
     }
 
@@ -279,7 +261,6 @@ public class DNSByteResults {
         int typeCode = type.getCode();
         switch (typeCode) {
             case 1:
-                System.out.println("Type A record to be decoded");
                 /* class IN */
                 if (rclass == 1) {
                     return readTypeAResult(startIndex, rlength);
@@ -289,14 +270,12 @@ public class DNSByteResults {
                 break;
             case 2:
             case 5:
-                System.out.println("Type CNAME/NS record");
                 if (rclass == 1) {
                     String res = readCNameResultExp(startIndex, rlength);
                     return res;
                 }
                 break;
             case 28:
-                System.out.println("Type AAAA record");
                 if (rclass == 1) {
                     String res = readTypeAAResult(startIndex, rlength);
                     return res;
