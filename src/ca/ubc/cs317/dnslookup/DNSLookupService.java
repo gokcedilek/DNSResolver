@@ -176,45 +176,33 @@ public class DNSLookupService {
             System.err.println("Maximum number of indirection levels reached.");
             return Collections.emptySet();
         }
-        // TODO (PART 1/2): Implement this
-        // ANS is cname query --> increment by 1, call getResults again
-        // only call this one again if ans is cname
-//        retrieveResultsFromServer(node, rootServer);
-        // cache? check for CNAME
-        // loop through cache
-
-        // check whether things are cached
-        // if not, iterative query
-        // first thing to do here is to check cache before retrieve results
-
         for (ResourceRecord record : cache.getCachedResults(node)) {
             // check if answer and not CNAME
-            System.out.printf("Record!: %-30s %-5s %-8d %s\n", node.getHostName(), record.getNode().getType(),
-                    record.getTTL(), record.getTextResult());
+//            System.out.printf("Record!: %-30s %-5s %-8d %s\n", node.getHostName(), record.getNode().getType(),
+//                    record.getTTL(), record.getTextResult());
             // if we found the answer
             if ((node.getHostName().equals(record.getNode().getHostName()))) {
                 // if we dont have cname
                 if (record.getNode().getType() != RecordType.CNAME) {
-                    System.out.printf("ANSWER found: %-30s %-5s %-8d %s\n", node.getHostName(),
-                            record.getNode().getType(), record.getTTL(), record.getTextResult());
+//                    System.out.printf("ANSWER found: %-30s %-5s %-8d %s\n", node.getHostName(),
+//                            record.getNode().getType(), record.getTTL(), record.getTextResult());
                     return cache.getCachedResults(node);
                 } else {
-                    DNSNode newNodeCNAME = new DNSNode(record.getTextResult(), RecordType.CNAME);
+                    DNSNode newNodeCNAME = new DNSNode(record.getTextResult(), RecordType.A);
                     return getResults(newNodeCNAME, indirectionLevel + 1);
                 }
             }
         }
 
-        System.out.println("No answer yet");
         retrieveResultsFromServer(node, rootServer);
-        ArrayList<ResourceRecord> cnames =
-                cache.getCachedResults(node).stream().filter(rr -> (rr.getType() == RecordType.CNAME)).collect(toCollection(ArrayList::new));
-        // ERROR TO FIX!!!!!!!!!!!!!!!
 
+        DNSNode d = new DNSNode(node.getHostName(), RecordType.CNAME);
+        ArrayList<ResourceRecord> cnames = cache.getCachedResults(d).stream().filter(rr -> (rr.getType() == RecordType.CNAME)).collect(Collectors.toCollection(ArrayList::new));
+//        printResults(d, cache.getCachedResults(d));
         if (cnames.size() > 0) {
              // found our cname answer
-            DNSNode newNodeCNAME = new DNSNode(cnames[0].getHostName(),
-                    RecordType.CNAME);
+            DNSNode newNodeCNAME = new DNSNode(cnames.get(0).getTextResult(),
+                    RecordType.A);
             return getResults(newNodeCNAME, indirectionLevel + 1);
         }
 
@@ -233,14 +221,11 @@ public class DNSLookupService {
         byte[] message = new byte[512]; // query is no longer than 512 bytes
 
         try {
+
             DNSServerResponse serverResponse = DNSQueryHandler.buildAndSendQuery(message, server, node);
 
             Set<ResourceRecord> nameservers = DNSQueryHandler.decodeAndCacheResponse(serverResponse.getTransactionID(),
                     serverResponse.getResponse(), cache);
-            // edit
-            System.out.println("retrieveResultsfromserver cache size: " + cache.getCachedResults(node).size());
-            System.out.println("nameservers size: " + nameservers.size());
-            // end of edit
 
             if (nameservers == null)
                 nameservers = Collections.emptySet();
@@ -254,9 +239,6 @@ public class DNSLookupService {
         }
     }
 
-    // retrieve calls queryNext level
-    // qnl: decide if we should call retrieveresultsfromserver, ows stop
-
     /**
      * Query the next level DNS Server, if necessary
      *
@@ -265,111 +247,35 @@ public class DNSLookupService {
      *                    query the next level.
      */
     private static void queryNextLevel(DNSNode node, Set<ResourceRecord> nameservers) {
-        // declare indirectionlevel = 0
-        // getResults(indirectionlevel+1) when you get a cname answer
-
-        // answer, nameserver, additional --> only cache addresses not names
-
-        // if we dont have answer AND we find A or AAAA, call it nextNS -->
-        // retrieveResultsFromServer
-        // (node, nextNS)
-        // if we dont have answer AND we dont have A / AAAA --> getResults
-        // (one of the NSs, 0) query for the IP of one of the NSs --> loop
-        // over all NSs, if one of them returns nonempty, we have answer -->
-        // retrieveResultsFromServer(node, one of the IPs we got as the answer)
-
-        // TODO (PART 2): Implement this
-        System.out.println("in queryNextLevel");
-        // printResults(node, nameservers)
         for (ResourceRecord record : nameservers) {
-            System.out.printf("question: %s, answer: %s, node type: %s, " +
-                            "record type: %s, text result: %s, inet result: " +
-                            "%s " +
-                            "\n",
-                    node.getHostName(), record.getNode().getHostName(),
-                    record.getNode().getType(), record.getType(),
-                    record.getTextResult(), record.getInetResult());
-
 //            // we have an answer
             if ((node.getHostName().equals(record.getNode().getHostName()))) {
-                System.out.printf("QUERY NEXT LEVEL ANSWER: %-30s %-5s %-8d %s\n", node.getHostName(),
-                            record.getType(), record.getTTL(), record.getTextResult());
-                System.out.println("SHOULD STOP SEARCHING HERE");
-                return;
-//                if (record.getType() != RecordType.CNAME) {
-//                    System.out.printf("QUERY NEXT LEVEL ANSWER: %-30s %-5s %-8d %s\n", node.getHostName(),
+//                System.out.printf("QUERY NEXT LEVEL ANSWER: %-30s %-5s %-8d %s\n", node.getHostName(),
 //                            record.getType(), record.getTTL(), record.getTextResult());
-//                    return;
-//                } else {
-//                    // how to increment indirectionLevel? recurse
-//                    System.out.println("we have a CNAME answer???");
-//                    return;
-//                }
+//                System.out.println("SHOULD STOP SEARCHING HERE");
+                return;
             }
         }
 
-        // start the ip of ns --> check all of the ns's --> see if we find an
-        // IP --> start a new query for that domain name ~ similar to cname
-        // cname -- stop when we find an answer
-        // nameserver -- when we find an naswer, need to communicate to
-        // original query
+        ArrayList<ResourceRecord> nextServersTypeA = nameservers.stream().filter(rr -> (rr.getType() == RecordType.A)).collect(Collectors.toCollection(ArrayList::new));
 
-        Set<ResourceRecord> nextServersTypeA = nameservers.stream().filter(rr -> ((rr.getType() == RecordType.A) || (rr.getType() == RecordType.AAAA))).collect(Collectors.toSet());
         if (nextServersTypeA.size() == 0) {
-            Set<ResourceRecord> nextServersTypeNS =
-                    nameservers.stream().filter(rr -> (rr.getType() == RecordType.NS)).collect(Collectors.toSet());
-            printResults(node, nextServersTypeNS);
-//            for (ResourceRecord record : nextServersTypeNS) {
-//
-//            }
-        } else {
-//            System.out.println("next server to use for the query: %s",
-//                    nextServersTypeA.get(0));
-            // retrieveResFromServer(node, nextServers.get(0));
-            // for loop over nextServers one might not give an answer
-            int count = 0;
-            for (ResourceRecord record: nextServersTypeA) {
-                System.out.printf("type A server loop: %d", count);
-                count++;
-                retrieveResultsFromServer(node,
-                        record.getInetResult());
-                // TODO ???
+            // we just NSs
+            ArrayList<ResourceRecord> nextServersTypeNS = nameservers.stream().filter(rr -> (rr.getType() == RecordType.NS)).collect(Collectors.toCollection(ArrayList::new));
+            if (nextServersTypeNS.size() == 0) {
+                return;
             }
+            DNSNode newNSNode = new DNSNode(nextServersTypeNS.get(0).getTextResult(), RecordType.A);
+            Set<ResourceRecord> resultsForNS = getResults(newNSNode, 0);
+            if (resultsForNS.size() == 0) {
+                return;
+            }
+            retrieveResultsFromServer(node, resultsForNS.iterator().next().getInetResult());
+        } else {
+            retrieveResultsFromServer(node, nextServersTypeA.get(0).getInetResult());
         }
-
-
-            // NSs
-//            else {
-//                // we have no answer yet (check type, break and use A or AAAA
-//                // else )
-//
-//                // you see NS type and theres no A or AAAA below we should
-//                // use the NS -->
-//                //
-//                if (record.getType() == RecordType.NS){
-//                    Set<ResourceRecord> nextServers = nameservers.stream().filter(rr -> ((rr.getType() == RecordType.A) || (rr.getType() == RecordType.AAAA))).collect(Collectors.toSet());
-//                    // if no remaining records with A or AAAA type then have to
-//                    // use NS type for next query
-//                    if (nextServers.size() == 0) {
-//                        DNSNode newNode = new DNSNode(record.getTextResult(),
-//                                record.getType());
-////                        Set<ResourceRecord> resultsForNextServer =
-////                        getResults(newNode, 0);
-//                        System.out.println("we only have NS records");
-//                        printResults(node, nameservers);
-////                        printResults(newNode, resultsForNextServer);
-//                    } else {
-//                        System.out.println("we have A/AAAA later on!");
-//                        continue;
-//                    }
-//                } else if(record.getType() == RecordType.A || record.getType() == RecordType.AAAA) {
-//                    System.out.println("we found A!");
-//                    System.out.printf("we will query %s with IP: %s",
-//                            node.getHostName(), record.getInetResult());
-////                    retrieveResultsFromServer(node, record.getInetResult());
-//                }
-//            }
     }
+
 
     /**
      * Prints the result of a DNS query.

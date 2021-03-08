@@ -75,8 +75,6 @@ public class DNSByteResults {
         return AA == 1;
     }
 
-
-
     private int decodeRCode() {
         byte b = resultArray[3];
         int rcode = (0b1111) & b; // 00001111 & 00000101 == 00000101
@@ -111,7 +109,9 @@ public class DNSByteResults {
                 e.printStackTrace();
             }
         } while (length != 0);
-        sb = sb.deleteCharAt(sb.length() - 1);
+        if (sb.length() > 0 ) {
+            sb = sb.deleteCharAt(sb.length() - 1);
+        }
 //        System.out.println("domain name: " + sb.toString());
         int qtype = decodeBytesToInt(startIndex, ++startIndex);
 //        System.out.println("q type: " + qtype);
@@ -194,7 +194,7 @@ public class DNSByteResults {
         String result = getRecordResultBasedOnRecordType(startIndex,
                     rlength, type, rclass);
         startIndex = startIndex + rlength;
-        if (type == RecordType.A) {
+        if (type == RecordType.A || type == RecordType.AAAA) {
             try {
                 InetAddress addressInet = InetAddress.getByName(result);
                 ResourceRecord record = new ResourceRecord(hostname, type, ttl,
@@ -210,6 +210,9 @@ public class DNSByteResults {
             setOfRecords.add(record);
         }
         if (verboseTracing) {
+            if(result.equals("")) {
+                result = "----";
+            }
             System.out.printf("       %-30s %-10d %-4s %s\n", hostname, ttl, type, result);
         }
         return startIndex;
