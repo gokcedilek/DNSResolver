@@ -153,6 +153,21 @@ public class DNSLookupService {
         printResults(node, getResults(node, 0));
     }
 
+    private static boolean isAnswerInCache(DNSNode node) {
+        for (ResourceRecord record : cache.getCachedResults(node)) {
+            if ((node.getHostName().equals(record.getHostName()))) {
+                // hostname exists in the cache
+                if (record.getType() == RecordType.A || record.getType() == RecordType.AAAA) {
+                    return true;
+                } else if (record.getType() == RecordType.CNAME) {
+                    DNSNode cnameNode = new DNSNode(record.getTextResult(), RecordType.A);
+                    return isAnswerInCache(cnameNode);
+                }
+            }
+        }
+        return false;
+    }
+
     /**
      * Finds all the results for a specific node.
      *
@@ -176,34 +191,42 @@ public class DNSLookupService {
             System.err.println("Maximum number of indirection levels reached.");
             return Collections.emptySet();
         }
-        for (ResourceRecord record : cache.getCachedResults(node)) {
-            // check if answer and not CNAME
-//            System.out.printf("Record!: %-30s %-5s %-8d %s\n", node.getHostName(), record.getNode().getType(),
-//                    record.getTTL(), record.getTextResult());
-            // if we found the answer
-            if ((node.getHostName().equals(record.getNode().getHostName()))) {
-                // if we dont have cname
-                if (record.getNode().getType() != RecordType.CNAME) {
-//                    System.out.printf("ANSWER found: %-30s %-5s %-8d %s\n", node.getHostName(),
-//                            record.getNode().getType(), record.getTTL(), record.getTextResult());
-                    return cache.getCachedResults(node);
-                } else {
-                    DNSNode newNodeCNAME = new DNSNode(record.getTextResult(), RecordType.A);
-                    return getResults(newNodeCNAME, indirectionLevel + 1);
-                }
-            }
+        // for (ResourceRecord record : cache.getCachedResults(node)) {
+        // if ((node.getHostName().equals(record.getNode().getHostName()))) {
+        // // if we dont have cname
+        // if (record.getNode().getType() != RecordType.CNAME) {
+        // System.out.printf("ANSWER found: %-30s %-5s %-8d %s\n", node.getHostName(),
+        // record.getNode().getType(), record.getTTL(), record.getTextResult());
+        // return cache.getCachedResults(node);
+        // } else {
+        // DNSNode newNodeCNAME = new DNSNode(record.getTextResult(), RecordType.A);
+        // return getResults(newNodeCNAME, indirectionLevel + 1);
+        // }
+        // }
+        // }
+        if (isAnswerInCache(node)) {
+            System.out.println("returning cached results for node");
+            return cache.getCachedResults(node);
         }
 
+        System.out.println("didnt find in the cache!");
         retrieveResultsFromServer(node, rootServer);
 
         DNSNode d = new DNSNode(node.getHostName(), RecordType.CNAME);
-        ArrayList<ResourceRecord> cnames = cache.getCachedResults(d).stream().filter(rr -> (rr.getType() == RecordType.CNAME)).collect(Collectors.toCollection(ArrayList::new));
-//        printResults(d, cache.getCachedResults(d));
+        ArrayList<ResourceRecord> cnames = cache.getCachedResults(d).stream()
+                .filter(rr -> (rr.getType() == RecordType.CNAME)).collect(Collectors.toCollection(ArrayList::new));
+        // printResults(d, cache.getCachedResults(d));
         if (cnames.size() > 0) {
-             // found our cname answer
-            DNSNode newNodeCNAME = new DNSNode(cnames.get(0).getTextResult(),
-                    RecordType.A);
-            return getResults(newNodeCNAME, indirectionLevel + 1);
+            // found our cname answer
+            DNSNode newNodeCNAME = new DNSNode(cnames.get(0).getTextResult(), RecordType.A);
+            // edit
+            if (isAnswerInCache(newNodeCNAME)) {
+                return cache.getCachedResults(newNodeCNAME);
+            } else {
+                return getResults(newNodeCNAME, indirectionLevel + 1);
+            }
+            // end of edit
+            // return getResults(newNodeCNAME, indirectionLevel + 1);
         }
 
         return cache.getCachedResults(node);
@@ -248,34 +271,46 @@ public class DNSLookupService {
      */
     private static void queryNextLevel(DNSNode node, Set<ResourceRecord> nameservers) {
         for (ResourceRecord record : nameservers) {
-//            // we have an answer
-            if ((node.getHostName().equals(record.getNode().getHostName()))) {
-//                System.out.printf("QUERY NEXT LEVEL ANSWER: %-30s %-5s %-8d %s\n", node.getHostName(),
-//                            record.getType(), record.getTTL(), record.getTextResult());
-//                System.out.println("SHOULD STOP SEARCHING HERE");
+            // System.out.printf("node: %s, nameserver node: %s, nameserver result: %s\n",
+            // node.getHostName(),
+            // record.getHostName(), record.getTextResult());
+            if ((node.getHostName().equals(record.getHostName())) && (record.getType() == RecordType.A
+                    || record.getType() == RecordType.AAAA || record.getType() == RecordType.CNAME)) {
+                System.out.println("found an answer!");
                 return;
             }
         }
 
-        ArrayList<ResourceRecord> nextServersTypeA = nameservers.stream().filter(rr -> (rr.getType() == RecordType.A)).collect(Collectors.toCollection(ArrayList::new));
+        ArrayList<ResourceRecord> nextServersTypeA = nameservers.stream().filter(rr -> (rr.getType() == RecordType.A))
+                .collect(Collectors.toCollection(ArrayList::new));
 
         if (nextServersTypeA.size() == 0) {
             // we just NSs
-            ArrayList<ResourceRecord> nextServersTypeNS = nameservers.stream().filter(rr -> (rr.getType() == RecordType.NS)).collect(Collectors.toCollection(ArrayList::new));
+            ArrayList<ResourceRecord> nextServersTypeNS = nameservers.stream()
+                    .filter(rr -> (rr.getType() == RecordType.NS)).collect(Collectors.toCollection(ArrayList::new));
             if (nextServersTypeNS.size() == 0) {
                 return;
             }
             DNSNode newNSNode = new DNSNode(nextServersTypeNS.get(0).getTextResult(), RecordType.A);
-            Set<ResourceRecord> resultsForNS = getResults(newNSNode, 0);
-            if (resultsForNS.size() == 0) {
-                return;
+            // edit
+            if (!isAnswerInCache(newNSNode)) {
+                Set<ResourceRecord> resultsForNS = getResults(newNSNode, 0);
+                if (resultsForNS.size() == 0) {
+                    return;
+                }
+                retrieveResultsFromServer(node, resultsForNS.iterator().next().getInetResult());
             }
-            retrieveResultsFromServer(node, resultsForNS.iterator().next().getInetResult());
+            // end of edit
+            // Set<ResourceRecord> resultsForNS = getResults(newNSNode, 0);
+            // if (resultsForNS.size() == 0) {
+            // return;
+            // }
+            // retrieveResultsFromServer(node,
+            // resultsForNS.iterator().next().getInetResult());
         } else {
             retrieveResultsFromServer(node, nextServersTypeA.get(0).getInetResult());
         }
     }
-
 
     /**
      * Prints the result of a DNS query.

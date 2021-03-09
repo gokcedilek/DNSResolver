@@ -55,12 +55,12 @@ public class DNSQueryHandler {
         return (byte) ((firstDigit << 4) + secondDigit);
     }
 
-//    private static void printByteArray(byte[] b) {
-//        for (int i = 0; i < b.length; i++) {
-//            System.out.print(String.format("0x%02X", b[i]) + ", ");
-//        }
-//        System.out.println();
-//    }
+    // private static void printByteArray(byte[] b) {
+    // for (int i = 0; i < b.length; i++) {
+    // System.out.print(String.format("0x%02X", b[i]) + ", ");
+    // }
+    // System.out.println();
+    // }
 
     private static int encodeDomainName(String hostname, byte[] message, int startIndex) {
         for (String label : hostname.split("\\.")) {
@@ -122,7 +122,7 @@ public class DNSQueryHandler {
 
         /* send query */
         byte[] query = Arrays.copyOfRange(message, 0, index);
-//        printByteArray(query);
+        // printByteArray(query);
         DatagramPacket packet = new DatagramPacket(query, query.length, server, 53);
         try {
             socket.send(packet);
@@ -131,26 +131,27 @@ public class DNSQueryHandler {
             packet = new DatagramPacket(response, response.length);
             socket.receive(packet);
         } catch (SocketTimeoutException se) {
-//            System.out.println("timeout: ");
-//            System.out.println(se);
+            // System.out.println("timeout: ");
+            // System.out.println(se);
             try {
                 socket.receive(packet);
             } catch (Exception e) {
-//                System.out.println("timeout #2: ");
-//                System.out.println(e);
+                // System.out.println("timeout #2: ");
+                // System.out.println(e);
                 byte[] emptyResponse = new byte[1024];
                 return new DNSServerResponse(ByteBuffer.wrap(emptyResponse), queryId);
             }
         }
 
-//        /* receive response */
-//        byte[] response = new byte[1024];
-//        packet = new DatagramPacket(response, response.length);
-//        socket.receive(packet);
+        // /* receive response */
+        // byte[] response = new byte[1024];
+        // packet = new DatagramPacket(response, response.length);
+        // socket.receive(packet);
 
         if (verboseTracing) {
             System.out.println("\n");
-            System.out.printf("Query ID     %d %s  %s --> %s\n", queryId, hostname, node.getType(), server.toString().substring(1));
+            System.out.printf("Query ID     %d %s  %s --> %s\n", queryId, hostname, node.getType(),
+                    server.toString().substring(1));
         }
 
         int transactionId = queryId;
@@ -178,16 +179,17 @@ public class DNSQueryHandler {
         }
 
         for (ResourceRecord r : records) {
-//            DNSNode n = r.getNode();
-//            System.out.println("record node: " + n.getHostName());
-//            System.out.println(cache.getCachedResults(n));
+            // DNSNode n = r.getNode();
+            // System.out.println("record node: " + n.getHostName());
+            // System.out.println(cache.getCachedResults(n));
+            // System.out.println("in decode and cache: ");
+            // System.out.printf("nameserver hostname: %s, nameserver type: %s, nameserver
+            // result: %s\n", r.getHostName(), r.getType(), r.getTextResult());
             if (r.getType() == RecordType.AAAA || r.getType() == RecordType.A || r.getType() == RecordType.CNAME) {
                 cache.addResult(r);
             }
-//            System.out.println(cache.getCachedResults(n));
+            // System.out.println(cache.getCachedResults(n));
         }
-//        DNSNode d = new DNSNode("finance.google.ca", RecordType.CNAME);
-//        DNSLookupService.printResults(d, cache.getCachedResults(d));
         return records;
     }
 

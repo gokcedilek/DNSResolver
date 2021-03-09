@@ -15,12 +15,12 @@ $(JARFILE): bin/ca/ubc/cs317/dnslookup/DNSLookupService.class
 run: $(JARFILE)
 	java -jar $(JARFILE) 199.7.83.42
 
-# run1: $(JARFILE)
-# 	java -jar $(JARFILE) 198.162.35.1
 run1: $(JARFILE)
-	# java -jar $(JARFILE) 198.162.35.1 -p1
-	# java -jar $(JARFILE) 199.7.83.42 -p1
-	java -jar $(JARFILE) 142.103.7.120 -p1
+	java -jar $(JARFILE) 198.162.35.1
+# run1: $(JARFILE)
+# 	# java -jar $(JARFILE) 198.162.35.1 -p1
+# 	# java -jar $(JARFILE) 199.7.83.42 -p1
+# 	java -jar $(JARFILE) 142.103.7.120 -p1
 
 clean:
 	-rm -rf  $(JARFILE) bin/*
