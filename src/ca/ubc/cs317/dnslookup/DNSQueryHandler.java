@@ -14,7 +14,6 @@ import java.util.Arrays;
 import java.lang.Integer;
 import java.lang.Character;
 import java.lang.Byte;
-// import org.apache.commons.lang3.StringUtils;
 
 public class DNSQueryHandler {
 
@@ -55,18 +54,17 @@ public class DNSQueryHandler {
         return (byte) ((firstDigit << 4) + secondDigit);
     }
 
-    // private static void printByteArray(byte[] b) {
-    // for (int i = 0; i < b.length; i++) {
-    // System.out.print(String.format("0x%02X", b[i]) + ", ");
-    // }
-    // System.out.println();
-    // }
-
+    /*
+     * store a hostname to the byte array (as part of the DNS query) www.cs.ubc.ca
+     * is encoded as 03 77 77 77 02 63 73 03 75 62 63 02 63 61
+     */
     private static int encodeDomainName(String hostname, byte[] message, int startIndex) {
         for (String label : hostname.split("\\.")) {
             byte b = (byte) label.length();
+            /* write length as 1 byte */
             message[startIndex++] = b;
             byte[] hostBytes = label.getBytes();
+            /* write each char in a section of the hostname as 1 byte */
             for (int i = 0; i < hostBytes.length; i++) {
                 message[startIndex++] = hostBytes[i];
             }
@@ -74,7 +72,7 @@ public class DNSQueryHandler {
         return startIndex;
     }
 
-    /* write an int as 16 bits */
+    /* write an int as 16 bits (2 bytes) */
     private static int encodeIntToBytes(int val, byte[] message, int startIndex) {
         String hex = Integer.toHexString(0x10000 | val).substring(1);
         byte byte1 = hexToByte(hex.substring(0, 2));
@@ -122,7 +120,6 @@ public class DNSQueryHandler {
 
         /* send query */
         byte[] query = Arrays.copyOfRange(message, 0, index);
-        // printByteArray(query);
         DatagramPacket packet = new DatagramPacket(query, query.length, server, 53);
         try {
             socket.send(packet);
@@ -131,22 +128,15 @@ public class DNSQueryHandler {
             packet = new DatagramPacket(response, response.length);
             socket.receive(packet);
         } catch (SocketTimeoutException se) {
-            // System.out.println("timeout: ");
-            // System.out.println(se);
             try {
+                /* if there's a timeout, attempt to resend the query */
                 socket.receive(packet);
             } catch (Exception e) {
-                // System.out.println("timeout #2: ");
-                // System.out.println(e);
+                /* if there's a second timeout, return an empty response */
                 byte[] emptyResponse = new byte[1024];
                 return new DNSServerResponse(ByteBuffer.wrap(emptyResponse), queryId);
             }
         }
-
-        // /* receive response */
-        // byte[] response = new byte[1024];
-        // packet = new DatagramPacket(response, response.length);
-        // socket.receive(packet);
 
         if (verboseTracing) {
             System.out.println("\n");
@@ -171,24 +161,23 @@ public class DNSQueryHandler {
      */
     public static Set<ResourceRecord> decodeAndCacheResponse(int transactionID, ByteBuffer responseBuffer,
             DNSCache cache) {
-        // TODO (PART 1): Implement this
+        /* convert the response buffer to a byte array */
         DNSByteResults byteResults = new DNSByteResults(responseBuffer);
+
+        /* extract the resource records in the DNS server response */
         Set<ResourceRecord> records = byteResults.decodeByteResult(verboseTracing);
         if (records.isEmpty()) {
             return records;
         }
 
         for (ResourceRecord r : records) {
-            // DNSNode n = r.getNode();
-            // System.out.println("record node: " + n.getHostName());
-            // System.out.println(cache.getCachedResults(n));
-            // System.out.println("in decode and cache: ");
-            // System.out.printf("nameserver hostname: %s, nameserver type: %s, nameserver
-            // result: %s\n", r.getHostName(), r.getType(), r.getTextResult());
+            /*
+             * only cache records that are of type A, AAAA, or CNAME (that is, do not cache
+             * type NS, because they don't contain any IPs we can use)
+             */
             if (r.getType() == RecordType.AAAA || r.getType() == RecordType.A || r.getType() == RecordType.CNAME) {
                 cache.addResult(r);
             }
-            // System.out.println(cache.getCachedResults(n));
         }
         return records;
     }

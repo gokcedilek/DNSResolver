@@ -26,48 +26,71 @@ public class DNSByteResults {
     DNSNode node;
     Set<ResourceRecord> setOfRecords;
 
-
+    /* convert the DNS server response to a byte array */
     public DNSByteResults(ByteBuffer buffer) {
         resultBuffer = buffer;
         resultArray = buffer.array();
         setOfRecords = new HashSet<ResourceRecord>();
     }
 
-    // return something?
     public Set<ResourceRecord> decodeByteResult(boolean verboseTracing) {
+        /* rcode != 0 means there was an error */
         int rcode = decodeRCode();
         if (rcode != 0) {
             return Collections.emptySet();
         }
+
+        /* bytes 0 & 1 is response ID */
         int rid = decodeBytesToInt(0, 1);
+        /* bytes 4 & 5 is num entries in question section */
         qdcount = decodeBytesToInt(4, 5);
+        /* bytes 6 & 7 is num entries in answer section */
         ancount = decodeBytesToInt(6, 7);
+        /* bytes 8 & 9 is num entries in authority section */
         nscount = decodeBytesToInt(8, 9);
+        /* bytes 6 & 7 is num entries in additional section */
+        /* note: additional section provides IPs for entries in the authority section */
+        /* memory aid: dig +norecurse @199.7.83.42 www.ugrad.cs.ubc.ca */
         arcount = decodeBytesToInt(10, 11);
+
+        /* decode QNAME, QTYPE, QCLASS */
         int ind = decodeQuestion(12);
+
+        /*
+         * read the Authoritative bit (if the responding name server is an authoritative
+         * name server for the domain name being queried)
+         */
         if (verboseTracing) {
             System.out.printf("Response ID: %d Authoritative = %s\n", rid, decodeAA());
         }
+
+        /* decode records in the answer section */
         if (verboseTracing) {
             System.out.printf("Answers (%d)\n", ancount);
         }
-        for(int i = 0; i < ancount; i++) {
+        for (int i = 0; i < ancount; i++) {
             ind = decodeRecord(ind, verboseTracing);
         }
+
+        /* decode records in the authority section */
         if (verboseTracing) {
             System.out.printf("Nameservers (%d)\n", nscount);
         }
-        for(int i = 0; i < nscount; i++) {
+        for (int i = 0; i < nscount; i++) {
             ind = decodeRecord(ind, verboseTracing);
         }
+
+        /* decode records in the additional section */
         if (verboseTracing) {
             System.out.printf("Additional Information (%d)\n", arcount);
         }
-        for(int i = 0; i < arcount; i++) {
+        for (int i = 0; i < arcount; i++) {
             ind = decodeRecord(ind, verboseTracing);
         }
+
         return setOfRecords;
     }
+
     private boolean decodeAA() {
         int AA = resultArray[2];
         AA = AA >> 2;
@@ -88,19 +111,28 @@ public class DNSByteResults {
         return count;
     }
 
+    /* decode QNAME, QTYPE, QCLASS */
+    /* note QNAME is the original domain name that was queried */
+    /* QTYPE is the type of the record (see RecordType.java) */
     private int decodeQuestion(int startIndex) {
         byte length = 0;
         StringBuilder sb = new StringBuilder();
         do {
+            /* each "section" of QNAME starts with length */
             length = resultArray[startIndex++];
+
+            /* QNAME terminates with a 0 byte, so break, and then read QTYPE */
             if (length == 0)
                 break;
+
+            /* read length number of bytes, which is one "section" of the domain name */
             byte[] domain = new byte[length];
             for (int i = 0; i < (int) length; i++) {
                 domain[i] = resultArray[startIndex++];
             }
             String domainName;
             try {
+                /* append a "section" to domain name */
                 domainName = new String(domain, "US-ASCII");
                 sb.append(domainName);
                 sb.append(".");
@@ -109,12 +141,17 @@ public class DNSByteResults {
                 e.printStackTrace();
             }
         } while (length != 0);
-        if (sb.length() > 0 ) {
+        /* delete the last . (ex: www.cs.ubc.ca.) */
+        if (sb.length() > 0) {
             sb = sb.deleteCharAt(sb.length() - 1);
         }
-//        System.out.println("domain name: " + sb.toString());
+
         int qtype = decodeBytesToInt(startIndex, ++startIndex);
-//        System.out.println("q type: " + qtype);
+
+        /*
+         * construct the node field, which represents the original question (domain name
+         * that was queried)
+         */
         node = new DNSNode(sb.toString(), RecordType.getByCode(qtype));
         startIndex++;
 
@@ -133,7 +170,7 @@ public class DNSByteResults {
             }
             if (isPointer(startIndex) != -1) {
                 /* pointer (start of another name), break */
-                startIndex = resultArray[startIndex+1];
+                startIndex = resultArray[startIndex + 1];
                 continue;
             }
             byte[] domain = new byte[first];
@@ -168,16 +205,32 @@ public class DNSByteResults {
         }
     }
 
+    /*
+     * each record contains NAME (possibly compressed - see isPointer), TYPE, CLASS,
+     * TTL, RDLENGTH, RDATA
+     */
     private int decodeRecord(int startIndex, boolean verboseTracing) {
         int pointer = isPointer(startIndex);
         String hostname = "";
         if (pointer != -1) {
             /* pointer */
             hostname = readNameAtOffsetExperiment(pointer);
+            /* pointer only takes 2 bytes, increment by 2 bytes */
             startIndex = startIndex + 2;
         } else {
             /* not a pointer */
             hostname = readNameAtOffsetExperiment(startIndex);
+            /*
+             * if hostname isn't compressed, e.g. www.cs.ubc.ca, observe that we need to
+             * increment by hostname length + 2 bytes, because there's an extra 0 byte at
+             * the end of the hostname that we need to skip over, AND there's an extra byte
+             * for the length of each "section" in the hostname that is not accounted by the
+             * "."s in the hostname
+             */
+            /*
+             * example: www.cs.ubc.ca has length 13, its decoded version 03 77 77 77 02 63
+             * 73 03 75 62 63 02 63 61 00 has length 15!
+             */
             startIndex = startIndex + hostname.length() + 2;
         }
 
@@ -191,26 +244,30 @@ public class DNSByteResults {
         int rlength = decodeBytesToInt(startIndex, ++startIndex);
         startIndex++;
 
-        String result = getRecordResultBasedOnRecordType(startIndex,
-                    rlength, type, rclass);
+        /* read rdata */
+        String result = getRecordResultBasedOnRecordType(startIndex, rlength, type, rclass);
         startIndex = startIndex + rlength;
+
+        /*
+         * ResourceRecord has 2 constructors - either we have an IPv4 or IPv6
+         * InetAddress (if), or we have a string domain name (else) as the data of the
+         * record
+         */
         if (type == RecordType.A || type == RecordType.AAAA) {
             try {
                 InetAddress addressInet = InetAddress.getByName(result);
-                ResourceRecord record = new ResourceRecord(hostname, type, ttl,
-                        addressInet);
+                ResourceRecord record = new ResourceRecord(hostname, type, ttl, addressInet);
                 setOfRecords.add(record);
             } catch (UnknownHostException e) {
                 System.err.println("Invalid root server (" + e.getMessage() + ").");
                 System.exit(1);
             }
         } else {
-            ResourceRecord record = new ResourceRecord(hostname, type, ttl,
-                    result);
+            ResourceRecord record = new ResourceRecord(hostname, type, ttl, result);
             setOfRecords.add(record);
         }
         if (verboseTracing) {
-            if(result.equals("")) {
+            if (result.equals("")) {
                 result = "----";
             }
             System.out.printf("       %-30s %-10d %-4s %s\n", hostname, ttl, type, result);
@@ -232,13 +289,15 @@ public class DNSByteResults {
         sb = sb.deleteCharAt(sb.length() - 1);
         return sb.toString();
     }
+
     private String readTypeAAResult(int startIndex, int addressLength) {
         StringBuilder sb = new StringBuilder();
         while (addressLength > 0) {
             String section = getHexString(resultArray[startIndex], resultArray[startIndex + 1]);
-            startIndex += 2;    sb.append(section);
+            startIndex += 2;
+            sb.append(section);
             sb.append(":");
-            addressLength = addressLength-2;
+            addressLength = addressLength - 2;
         }
         sb = sb.deleteCharAt(sb.length() - 1);
         return sb.toString();
@@ -251,7 +310,7 @@ public class DNSByteResults {
 
     private String getHexString(byte firstB, byte secondB) {
         String input = String.format("%02x%02x", firstB, secondB);
-        input =input.replaceFirst("^0+", "");
+        input = input.replaceFirst("^0+", "");
         if (input.equals("")) {
             return "0";
         } else {
@@ -259,33 +318,31 @@ public class DNSByteResults {
         }
     }
 
-    // TODO
+    /* read a type A, AAAA, or CNAME record */
     private String getRecordResultBasedOnRecordType(int startIndex, int rlength, RecordType type, int rclass) {
         int typeCode = type.getCode();
         switch (typeCode) {
-            case 1:
-                /* class IN */
-                if (rclass == 1) {
-                    return readTypeAResult(startIndex, rlength);
-                }
-                // TODO For the CH class, a domain name followed by a 16 bit octal Chaos
-                // address.
-                break;
-            case 2:
-            case 5:
-                if (rclass == 1) {
-                    String res = readCNameResultExp(startIndex, rlength);
-                    return res;
-                }
-                break;
-            case 28:
-                if (rclass == 1) {
-                    String res = readTypeAAResult(startIndex, rlength);
-                    return res;
-                }
-                break;
-            default:
-                return "";
+        case 1:
+            /* class IN */
+            if (rclass == 1) {
+                return readTypeAResult(startIndex, rlength);
+            }
+            break;
+        case 2:
+        case 5:
+            if (rclass == 1) {
+                String res = readCNameResultExp(startIndex, rlength);
+                return res;
+            }
+            break;
+        case 28:
+            if (rclass == 1) {
+                String res = readTypeAAResult(startIndex, rlength);
+                return res;
+            }
+            break;
+        default:
+            return "";
         }
         return "";
     }

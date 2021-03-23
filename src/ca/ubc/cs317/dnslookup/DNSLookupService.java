@@ -154,11 +154,26 @@ public class DNSLookupService {
         printResults(node, getResults(node, 0));
     }
 
+    /* returns the cached answers for the originalNode param below */
+    /* returning happens by modifying the answers set param below */
+    /* originalNode: node we are looking for answers for */
+    /* node: the current node we are querying (required for CNAME recursion) */
     private static void findAnswer(DNSNode originalNode, DNSNode node, Set<ResourceRecord> answers) {
         Set<ResourceRecord> combinedSet = new HashSet<ResourceRecord>();
+        /* look at all the A, AAAA, CNAME records in the cache */
         combinedSet.addAll(cache.getCachedResults(new DNSNode(node.getHostName(), RecordType.A)));
         combinedSet.addAll(cache.getCachedResults(new DNSNode(node.getHostName(), RecordType.AAAA)));
         combinedSet.addAll(cache.getCachedResults(new DNSNode(node.getHostName(), RecordType.CNAME)));
+
+        /* loop over the cache */
+        /*
+         * if our hostname exists with type A / AAAA, the IP we are looking for has
+         * already been cached, add it to the answers set!
+         */
+        /*
+         * else if our hostname exists with type CNAME, look for the answers of the
+         * CNAME value
+         */
         for (ResourceRecord record : combinedSet) {
             if ((node.getHostName().equals(record.getHostName()))) {
                 // hostname exists in the cache
@@ -166,6 +181,7 @@ public class DNSLookupService {
                     answers.add(new ResourceRecord(originalNode.getHostName(), record.getType(), record.getTTL(),
                             record.getInetResult()));
                 } else if (record.getType() == RecordType.CNAME) {
+                    /* look for the answers of the CNAME value (which is another hostname) */
                     DNSNode cnameNode = new DNSNode(record.getTextResult(), RecordType.A);
                     findAnswer(originalNode, cnameNode, answers);
                 }
@@ -198,27 +214,50 @@ public class DNSLookupService {
         }
         Set<ResourceRecord> answers = new HashSet<>();
         findAnswer(node, node, answers);
+        /* if an answer(s) have been cached, simply return them from the cache! */
         if (answers.size() > 0) {
             return answers;
         }
+
+        /*
+         * query the domain name represented by node starting from the rootServer
+         * (defined in the class)
+         */
         retrieveResultsFromServer(node, rootServer);
 
+        /* check if there are CNAMEs for this node in the cache */
         DNSNode d = new DNSNode(node.getHostName(), RecordType.CNAME);
         ArrayList<ResourceRecord> cnames = cache.getCachedResults(d).stream()
                 .filter(rr -> (rr.getType() == RecordType.CNAME)).collect(Collectors.toCollection(ArrayList::new));
         if (cnames.size() > 0) {
             // found our cname answer
+            /*
+             * we now need to query for newNodeCNAME, which will give us the answer for the
+             * original query, because the IP we are looking for is the same as the IP of
+             * the CNAME for the original query
+             */
             DNSNode newNodeCNAME = new DNSNode(cnames.get(0).getTextResult(), RecordType.A);
-            // edit
+
+            /* if the answer for this CNAME has been cached, return from cache */
             answers = new HashSet<>();
             findAnswer(newNodeCNAME, newNodeCNAME, answers);
             if (answers.size() > 0) {
                 return answers;
             } else {
+                /*
+                 * else, initiate a brand new query to query for the CNAME, note we increment
+                 * indirectionLevel by 1 so that we can eventually cut-off the query if we get
+                 * too many CNAMEs. also note the answer to the original query is the same as
+                 * the answer to the CNAME.
+                 */
                 return getResults(newNodeCNAME, indirectionLevel + 1);
             }
         }
 
+        /*
+         * if there are no CNAMEs for this node in the cache, we must have found the
+         * answer, return it from the cache!
+         */
         return cache.getCachedResults(node);
     }
 
@@ -237,6 +276,7 @@ public class DNSLookupService {
 
             DNSServerResponse serverResponse = DNSQueryHandler.buildAndSendQuery(message, server, node);
 
+            /* get all the ResourceRecord instances for the query */
             Set<ResourceRecord> nameservers = DNSQueryHandler.decodeAndCacheResponse(serverResponse.getTransactionID(),
                     serverResponse.getResponse(), cache);
 
@@ -261,37 +301,69 @@ public class DNSLookupService {
      */
     private static void queryNextLevel(DNSNode node, Set<ResourceRecord> nameservers) {
         for (ResourceRecord record : nameservers) {
-
+            /* if we found type A / AAAA, great! we found an answer! */
+            /*
+             * if we found type CNAME, we need to initiate a brand new query, so instead of
+             * "querying next level", which means querying the IP of an NS record / an
+             * authoritative server, exit (we will then initiate a brand new query)
+             */
             if ((node.getHostName().equals(record.getHostName())) && (record.getType() == RecordType.A
                     || record.getType() == RecordType.AAAA || record.getType() == RecordType.CNAME)) {
                 return;
             }
         }
 
+        /* find the type A records in the result */
+
+        /*
+         * , because if we have any type As for the NSs, we can simply send our original
+         * query to that IP (the new DNS server).
+         */
         ArrayList<ResourceRecord> nextServersTypeA = nameservers.stream().filter(rr -> (rr.getType() == RecordType.A))
                 .collect(Collectors.toCollection(ArrayList::new));
 
+        /*
+         * case 1: there are no type A records among the NSs. this means that we don't
+         * have an IP we can immediately use as the "next level server" to ask our
+         * original query/domain name.
+         */
         if (nextServersTypeA.size() == 0) {
-            // we just NSs
+            // we just have NSs
             ArrayList<ResourceRecord> nextServersTypeNS = nameservers.stream()
                     .filter(rr -> (rr.getType() == RecordType.NS)).collect(Collectors.toCollection(ArrayList::new));
             if (nextServersTypeNS.size() == 0) {
                 return;
             }
+            /* get the first NS randomly, any one should do */
             DNSNode newNSNode = new DNSNode(nextServersTypeNS.get(0).getTextResult(), RecordType.A);
-            // edit
+
+            /*
+             * check if the IP for this NS (domain name) has been cached. if yes, query for
+             * the original domain name using the IP of this new NS as the nameserver.
+             */
             Set<ResourceRecord> answers = new HashSet<>();
             findAnswer(newNSNode, newNSNode, answers);
             if (answers.size() > 0) {
                 retrieveResultsFromServer(node, answers.iterator().next().getInetResult());
             } else {
+                /*
+                 * if IPs for this NS have not been cached, we will have to initiate a brand new
+                 * query for the IP of newNSNode, and then query for the original domain name
+                 * using the IP we found for this new NS, same as above.
+                 */
                 Set<ResourceRecord> resultsForNS = getResults(newNSNode, 0);
                 if (resultsForNS.size() == 0) {
                     return;
                 }
                 retrieveResultsFromServer(node, resultsForNS.iterator().next().getInetResult());
             }
-        } else {
+        }
+        /*
+         * case 2: there are type A records among the NSs. this means that we have an IP
+         * we can immediately use as the "next level server" to ask our original
+         * query/domain name.
+         */
+        else {
             retrieveResultsFromServer(node, nextServersTypeA.get(0).getInetResult());
         }
     }
